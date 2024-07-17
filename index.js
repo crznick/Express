@@ -14,6 +14,7 @@ const USUARIOS = 'usuarios';
 let db;
 // Middleware para parsear JSON                        
 app.use(express.json());
+
 // Conexión a la base de datos                              
 MongoClient.connect(MONGO_URL)
     .then(client => {
@@ -23,6 +24,7 @@ MongoClient.connect(MONGO_URL)
     .catch(err => {
         console.error('Error al conectar a MongoDB', err);
     });
+
 // Obtener los equipos registrados                              
 app.get('/equipos', async (req, res) => {
     let resu = await db.collection(EQUIPOS).find({}).toArray();
@@ -43,7 +45,7 @@ app.get('/usuarios/:id', async (req, res) => {
 
     try {
         // Buscamos en la colección de usuarios en MongoDB el usuario con el ID proporcionado
-        const usuario = await db.collection('usuarios').findOne({ _id: new ObjectId(userId) });
+        const usuario = await db.collection(USUARIOS).findOne({ _id: new ObjectId(userId) });
 
         // Si no encontramos al usuario, respondemos con un código de estado 404 (No encontrado)
         if (!usuario) {
@@ -59,6 +61,77 @@ app.get('/usuarios/:id', async (req, res) => {
     }
 });
 
+// Crear nuevo usuario                                
+app.post('/usuarios', async (req, res) => {
+    const { rol, correo, nombre } = req.body;
+    if (!correo || !nombre || !rol) {
+        return res.status(500).send('Todos los campos son requeridos.');
+    } else {
+        const nuevoRegistro = req.body;
+        const usuario = await db.collection(USUARIOS).findOne({ correo: correo });
+        if (!usuario) {
+            try {
+                await db.collection(USUARIOS).insertOne(nuevoRegistro);
+                res.status(200).send("Nuevo usuario creado!");
+            } catch (err) {
+                console.log(err);
+                res.status(500).send('Error al crear usuario');
+            }
+        } else {
+            return res.status(500).send('Usuario existente');
+        }
+    }
+});
+
+// Modificar información de usuario existente
+app.post('/usuarios/:correo', async (req, res) => {
+    const { rol, nombre } = req.body;
+    const correo = req.params.correo;
+
+    if (!correo || !nombre || !rol) {
+        return res.status(500).send('Todos los campos son requeridos.');
+    } else {
+        const nuevoRegistro = { rol, nombre };  // No incluir el correo en el nuevo registro
+        const usuario = await db.collection(USUARIOS).findOne({ correo: correo });
+
+        if (!usuario) {
+            // Si no existe el usuario, devolver un error
+            return res.status(404).send('Usuario no encontrado');
+        }
+
+        try {
+            // Actualizar el usuario existente con los nuevos datos
+            await db.collection(USUARIOS).updateOne({ correo: correo }, { $set: nuevoRegistro });
+            res.status(200).send("Información de usuario actualizada!");
+        } catch (err) {
+            console.log(err);
+            res.status(500).send('Error al actualizar usuario');
+        }
+    }
+});
+
+// Borrar usuario por correo electrónico
+app.delete('/usuarios/:correo', async (req, res) => {
+    const correo = req.params.correo;
+
+    try {
+        // Buscar el usuario por correo electrónico
+        const usuario = await db.collection(USUARIOS).findOne({ correo: correo });
+
+        if (!usuario) {
+            return res.status(404).send('Usuario no encontrado');
+        }
+
+        // Si el usuario existe, proceder con la eliminación
+        await db.collection(USUARIOS).deleteOne({ correo: correo });
+        res.status(200).send("Usuario eliminado correctamente");
+    } catch (err) {
+        console.log(err);
+        res.status(500).send('Error al intentar eliminar usuario');
+    }
+});
+
+
 // Obtener los equipos de acuerdo a su estado                              
 app.get('/equipos/:estado', async (req, res) => {
     const est = req.params.estado;
@@ -66,6 +139,7 @@ app.get('/equipos/:estado', async (req, res) => {
     console.log(equipos);
     res.status(200).send(equipos);
 });
+
 // Crear nuevo equipo para prestamos                                
 app.post('/equipos', async (req, res) => {
     const { marbete, descripcion } = req.body;
@@ -81,6 +155,7 @@ app.post('/equipos', async (req, res) => {
         res.status(500).send('Error al crear equipo');
     }
 });
+
 // Modificar la descripción de un equipo solo si su estado es DISPONIBLE
 app.put('/equipos/:id', async (req, res) => {
     const equipoID = req.params.id;
@@ -120,6 +195,7 @@ app.put('/equipos/:id', async (req, res) => {
         res.status(500).send('Error al actualizar la descripción del equipo');
     }
 });
+
 // Aprobar, rechazar o establecer solicitudes como pendientes                              
 app.post('/solicitudes/:id', async (req, res) => {
     const { marbete, estado, encargado } = req.body;
@@ -138,6 +214,7 @@ app.post('/solicitudes/:id', async (req, res) => {
     await actualizarEstadoSolicitud({ marbete: marbete }, estado);
     res.status(200).json(result);
 });
+
 // Obtener solicitudes de un usuario específico o todas                            
 app.get('/solicitudes', async (req, res) => {
     const { correo, estado } = req.body;
@@ -151,6 +228,7 @@ app.get('/solicitudes', async (req, res) => {
         res.status(500).json({ msg: 'error' });
     }
 });
+
 // Eliminar un equipo solo si su estado es DISPONIBLE
 app.delete('/equipos/remove/:id', async (req, res) => {
     const equipoID = req.params.id;
@@ -171,6 +249,7 @@ app.delete('/equipos/remove/:id', async (req, res) => {
         }
 
         // Verificar si el estado es DISPONIBLE
+        
         if (equipo.estado !== 'DISPONIBLE') {
             return res.status(400).send('El equipo no está disponible para eliminar');
         }
@@ -183,6 +262,7 @@ app.delete('/equipos/remove/:id', async (req, res) => {
         res.status(500).send('Error al eliminar el equipo');
     }
 });
+
 // Crear nueva solicitud                                
 app.post('/solicitudes', async (req, res) => {
     const { correo, equipo, marbete } = req.body;
@@ -215,6 +295,7 @@ async function actualizarEstadoSolicitud(filtro, estado) {
     }
     return result;
 }
+
 // Iniciar el servidor                              
 app.listen(PORT, () => {
     console.log(`Servidor escuchando en el puerto ${PORT}`);
