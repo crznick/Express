@@ -39,7 +39,7 @@ app.get('/usuarios', async (req, res) => {
     res.status(200).json(resu);
 });
 
-// Ruta para obtener el correo de un usuario por su ID
+// Ruta para obtener el correo y rol de un usuario por su ID
 app.get('/usuarios/:id', async (req, res) => {
     const userId = req.params.id; // Obtenemos el parámetro ID de la solicitud
 
@@ -53,7 +53,7 @@ app.get('/usuarios/:id', async (req, res) => {
         }
 
         // Si encontramos al usuario, respondemos con su correo en formato JSON y código de estado 200 (OK)
-        res.status(200).json({ correo: usuario.correo });
+        res.status(200).json({ correo: usuario.correo, rol: usuario.rol });
     } catch (err) {
         // En caso de error, registramos el error en la consola y respondemos con un código de estado 500 (Error del servidor)
         console.error(err);
