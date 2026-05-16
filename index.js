@@ -6,7 +6,7 @@ const cors = require('cors');
 const app = express();
 app.use(cors());
 const PORT = process.env.PORT || 4000;
-const MONGO_URL = 'mongodb+srv://UTP:utp2024@clusterutp.yfa2pk5.mongodb.net';
+const MONGO_URL = 'mongodb://localhost:27017';
 const DATABASE_NAME = 'utp';
 const EQUIPOS = 'equipos';
 const SOLICITUDES = 'solicitudes';
@@ -15,7 +15,7 @@ let db;
 // Middleware para parsear JSON                        
 app.use(express.json());
 
-// Conexión a la base de datos                              
+// Conexiï¿½n a la base de datos                              
 MongoClient.connect(MONGO_URL)
     .then(client => {
         db = client.db(DATABASE_NAME);
@@ -39,23 +39,53 @@ app.get('/usuarios', async (req, res) => {
     res.status(200).json(resu);
 });
 
-// Ruta para obtener el correo y rol de un usuario por su ID
-app.get('/usuarios/:id', async (req, res) => {
-    const userId = req.params.id; // Obtenemos el parámetro ID de la solicitud
+// Ruta para obtener el usuario por su correo y contraseÃ±a
+app.post('/login', async (req, res) => {
+
+    const { correo, password } = req.body;
+
+    if (!correo || !password) {
+        return res.status(400).send('Correo y contraseÃ±a requeridos');
+    }
 
     try {
-        // Buscamos en la colección de usuarios en MongoDB el usuario con el ID proporcionado
+        // Buscamos en la colecciï¿½n de usuarios en MongoDB el usuario con las credenciales dadas
+        const usuario = await db.collection(USUARIOS).findOne({
+            correo,
+            password
+        });
+        // Si no encontramos al usuario, respondemos con un cï¿½digo de estado 401 (No Autorizado)
+        if (!usuario) {
+            return res.status(401).send('Credenciales invÃ¡lidas');
+        }
+         // Si encontramos al usuario, respondemos en formato JSON la informaciÃ³n completa del usuario y cï¿½digo de estado 200 (OK)
+        res.status(200).json(usuario);
+
+    } catch (err) {
+        // En caso de error, registramos el error en la consola y respondemos con un cï¿½digo de estado 500 (Error del servidor)
+        console.log(err);
+        res.status(500).send('Error en login');
+
+    }
+});
+
+// Ruta para obtener el correo y rol de un usuario por su ID
+app.get('/usuarios/:id', async (req, res) => {
+    const userId = req.params.id; // Obtenemos el parï¿½metro ID de la solicitud
+
+    try {
+        // Buscamos en la colecciï¿½n de usuarios en MongoDB el usuario con el ID proporcionado
         const usuario = await db.collection(USUARIOS).findOne({ _id: new ObjectId(userId) });
 
-        // Si no encontramos al usuario, respondemos con un código de estado 404 (No encontrado)
+        // Si no encontramos al usuario, respondemos con un cï¿½digo de estado 404 (No encontrado)
         if (!usuario) {
             return res.status(404).send('Usuario no encontrado');
         }
 
-        // Si encontramos al usuario, respondemos con su correo en formato JSON y código de estado 200 (OK)
+        // Si encontramos al usuario, respondemos con su correo en formato JSON y cï¿½digo de estado 200 (OK)
         res.status(200).json({ correo: usuario.correo, rol: usuario.rol });
     } catch (err) {
-        // En caso de error, registramos el error en la consola y respondemos con un código de estado 500 (Error del servidor)
+        // En caso de error, registramos el error en la consola y respondemos con un cï¿½digo de estado 500 (Error del servidor)
         console.error(err);
         res.status(500).send('Error al obtener usuario');
     }
@@ -63,27 +93,54 @@ app.get('/usuarios/:id', async (req, res) => {
 
 // Crear nuevo usuario                                
 app.post('/usuarios', async (req, res) => {
+
     const { rol, correo, nombre } = req.body;
+
+    // Validar campos requeridos
     if (!correo || !nombre || !rol) {
         return res.status(500).send('Todos los campos son requeridos.');
-    } else {
-        const nuevoRegistro = req.body;
-        const usuario = await db.collection(USUARIOS).findOne({ correo: correo });
-        if (!usuario) {
-            try {
-                await db.collection(USUARIOS).insertOne(nuevoRegistro);
-                res.status(200).send("Nuevo usuario creado!");
-            } catch (err) {
-                console.log(err);
-                res.status(500).send('Error al crear usuario');
-            }
-        } else {
+    }
+
+    try {
+
+        // Verificar si ya existe un usuario con ese correo
+        const usuarioExistente = await db.collection(USUARIOS).findOne({
+            correo: correo
+        });
+
+        if (usuarioExistente) {
             return res.status(500).send('Usuario existente');
         }
+
+        // Generar contraseÃ±a automÃ¡tica simple
+        const password = Math.random().toString(36).slice(-8);
+
+        // Crear objeto usuario
+        const nuevoRegistro = {
+            nombre,
+            correo,
+            password,
+            rol
+        };
+
+        // Guardar usuario
+        await db.collection(USUARIOS).insertOne(nuevoRegistro);
+
+        // Responder incluyendo la contraseÃ±a generada
+        res.status(200).json({
+            msg: 'Nuevo usuario creado!',
+            password: password
+        });
+
+    } catch (err) {
+
+        console.log(err);
+        res.status(500).send('Error al crear usuario');
+
     }
 });
 
-// Modificar información de usuario existente
+// Modificar informaciï¿½n de usuario existente
 app.post('/usuarios/:correo', async (req, res) => {
     const { rol, nombre } = req.body;
     const correo = req.params.correo;
@@ -102,7 +159,7 @@ app.post('/usuarios/:correo', async (req, res) => {
         try {
             // Actualizar el usuario existente con los nuevos datos
             await db.collection(USUARIOS).updateOne({ correo: correo }, { $set: nuevoRegistro });
-            res.status(200).send("Información de usuario actualizada!");
+            res.status(200).send("Informaciï¿½n de usuario actualizada!");
         } catch (err) {
             console.log(err);
             res.status(500).send('Error al actualizar usuario');
@@ -110,19 +167,19 @@ app.post('/usuarios/:correo', async (req, res) => {
     }
 });
 
-// Borrar usuario por correo electrónico
+// Borrar usuario por correo electrï¿½nico
 app.delete('/usuarios/:correo', async (req, res) => {
     const correo = req.params.correo;
 
     try {
-        // Buscar el usuario por correo electrónico
+        // Buscar el usuario por correo electrï¿½nico
         const usuario = await db.collection(USUARIOS).findOne({ correo: correo });
 
         if (!usuario) {
             return res.status(404).send('Usuario no encontrado');
         }
 
-        // Si el usuario existe, proceder con la eliminación
+        // Si el usuario existe, proceder con la eliminaciï¿½n
         await db.collection(USUARIOS).deleteOne({ correo: correo });
         res.status(200).send("Usuario eliminado correctamente");
     } catch (err) {
@@ -156,13 +213,13 @@ app.post('/equipos', async (req, res) => {
     }
 });
 
-// Modificar la descripción de un equipo solo si su estado es DISPONIBLE
+// Modificar la descripciï¿½n de un equipo solo si su estado es DISPONIBLE
 app.put('/equipos/:id', async (req, res) => {
     const equipoID = req.params.id;
     const { descripcion } = req.body;
 
     if (!descripcion) {
-        return res.status(400).send('La descripción es requerida');
+        return res.status(400).send('La descripciï¿½n es requerida');
     }
 
     let filtro;
@@ -183,16 +240,16 @@ app.put('/equipos/:id', async (req, res) => {
 
         // Verificar si el estado es DISPONIBLE
         if (equipo.estado !== 'DISPONIBLE') {
-            return res.status(400).send('El equipo no está disponible para modificar');
+            return res.status(400).send('El equipo no estï¿½ disponible para modificar');
         }
 
-        // Actualizar la descripción del equipo
+        // Actualizar la descripciï¿½n del equipo
         const documentoActualizado = { $set: { descripcion: descripcion } };
         await db.collection(EQUIPOS).updateOne(filtro, documentoActualizado);
-        res.status(200).send(`Descripción del equipo con ID ${equipoID} actualizada correctamente`);
+        res.status(200).send(`Descripciï¿½n del equipo con ID ${equipoID} actualizada correctamente`);
     } catch (err) {
         console.error(err);
-        res.status(500).send('Error al actualizar la descripción del equipo');
+        res.status(500).send('Error al actualizar la descripciï¿½n del equipo');
     }
 });
 
@@ -215,7 +272,7 @@ app.post('/solicitudes/:id', async (req, res) => {
     res.status(200).json(result);
 });
 
-// Obtener solicitudes de un usuario específico o todas                            
+// Obtener solicitudes de un usuario especï¿½fico o todas                            
 app.get('/solicitudes', async (req, res) => {
     const { correo, estado } = req.body;
     if (estado == undefined && correo == undefined) {
@@ -251,7 +308,7 @@ app.delete('/equipos/remove/:id', async (req, res) => {
         // Verificar si el estado es DISPONIBLE
         
         if (equipo.estado !== 'DISPONIBLE') {
-            return res.status(400).send('El equipo no está disponible para eliminar');
+            return res.status(400).send('El equipo no estï¿½ disponible para eliminar');
         }
 
         // Eliminar el equipo
