@@ -5,43 +5,52 @@ const { MongoClient } = require('mongodb');
 const cors = require('cors');
 const app = express();
 app.use(cors());
+require('dotenv').config();
 const PORT = process.env.PORT || 4000;
-const MONGO_URL = 'mongodb://localhost:27017';
-const DATABASE_NAME = 'utp';
+const MONGO_AUTH_URL = process.env.MONGO_AUTH_URL;
+const MONGO_EQUIPOS_URL = process.env.MONGO_EQUIPOS_URL;
+
+const AUTH_DATABASE = 'utp_auth';
+const EQUIPOS_DATABASE = 'utp_equipos';
 const EQUIPOS = 'equipos';
 const SOLICITUDES = 'solicitudes';
 const USUARIOS = 'usuarios';
-let db;
+
+let auth_db;
+let equipos_db;
+
 // Middleware para parsear JSON                        
 app.use(express.json());
 
-// Conexi�n a la base de datos                              
-MongoClient.connect(MONGO_URL)
+// Conexion base autenticacion
+MongoClient.connect(MONGO_AUTH_URL)
     .then(client => {
-        db = client.db(DATABASE_NAME);
-        console.log('Conectado a MongoDB Base de datos utp');
+        auth_db = client.db(AUTH_DATABASE);
+        console.log('Conectado a MongoDB Auth');
     })
     .catch(err => {
-        console.error('Error al conectar a MongoDB', err);
+        console.error('Error Mongo Auth', err);
     });
 
-// Obtener los equipos registrados                              
-app.get('/equipos', async (req, res) => {
-    let resu = await db.collection(EQUIPOS).find({}).toArray();
-    console.log("Consultar todos los equipos registrados");
-    res.status(200).json(resu);
-});
+// Conexion base equipos
+MongoClient.connect(MONGO_EQUIPOS_URL)
+    .then(client => {
+        equipos_db = client.db(EQUIPOS_DATABASE);
+        console.log('Conectado a MongoDB Equipos');
+    })
+    .catch(err => {
+        console.error('Error Mongo Equipos', err);
+    });
 
 //APi para obtener todos los usuarios
 app.get('/usuarios', async (req, res) => {
-    let resu = await db.collection(USUARIOS).find({}).toArray();
+    let resu = await auth_db.collection(USUARIOS).find({}).toArray();
     console.log("Consultar todos los usuarios registrados");
     res.status(200).json(resu);
 });
 
 // Ruta para obtener el usuario por su correo y contraseña
 app.post('/login', async (req, res) => {
-
     const { correo, password } = req.body;
 
     if (!correo || !password) {
@@ -50,7 +59,7 @@ app.post('/login', async (req, res) => {
 
     try {
         // Buscamos en la colecci�n de usuarios en MongoDB el usuario con las credenciales dadas
-        const usuario = await db.collection(USUARIOS).findOne({
+        const usuario = await auth_db.collection(USUARIOS).findOne({
             correo,
             password
         });
@@ -75,7 +84,7 @@ app.get('/usuarios/:id', async (req, res) => {
 
     try {
         // Buscamos en la colecci�n de usuarios en MongoDB el usuario con el ID proporcionado
-        const usuario = await db.collection(USUARIOS).findOne({ _id: new ObjectId(userId) });
+        const usuario = await auth_db.collection(USUARIOS).findOne({ _id: new ObjectId(userId) });
 
         // Si no encontramos al usuario, respondemos con un c�digo de estado 404 (No encontrado)
         if (!usuario) {
@@ -95,26 +104,20 @@ app.get('/usuarios/:id', async (req, res) => {
 app.post('/usuarios', async (req, res) => {
 
     const { rol, correo, nombre } = req.body;
-
     // Validar campos requeridos
     if (!correo || !nombre || !rol) {
         return res.status(500).send('Todos los campos son requeridos.');
     }
-
     try {
-
         // Verificar si ya existe un usuario con ese correo
-        const usuarioExistente = await db.collection(USUARIOS).findOne({
+        const usuarioExistente = await auth_db.collection(USUARIOS).findOne({
             correo: correo
         });
-
         if (usuarioExistente) {
             return res.status(500).send('Usuario existente');
         }
-
         // Generar contraseña automática simple
         const password = Math.random().toString(36).slice(-8);
-
         // Crear objeto usuario
         const nuevoRegistro = {
             nombre,
@@ -122,21 +125,17 @@ app.post('/usuarios', async (req, res) => {
             password,
             rol
         };
-
         // Guardar usuario
-        await db.collection(USUARIOS).insertOne(nuevoRegistro);
-
+        await auth_db.collection(USUARIOS).insertOne(nuevoRegistro);
         // Responder incluyendo la contraseña generada
         res.status(200).json({
             msg: 'Nuevo usuario creado!',
             password: password
         });
-
     } catch (err) {
 
         console.log(err);
         res.status(500).send('Error al crear usuario');
-
     }
 });
 
@@ -149,7 +148,7 @@ app.post('/usuarios/:correo', async (req, res) => {
         return res.status(500).send('Todos los campos son requeridos.');
     } else {
         const nuevoRegistro = { rol, nombre };  // No incluir el correo en el nuevo registro
-        const usuario = await db.collection(USUARIOS).findOne({ correo: correo });
+        const usuario = await auth_db.collection(USUARIOS).findOne({ correo: correo });
 
         if (!usuario) {
             // Si no existe el usuario, devolver un error
@@ -158,7 +157,7 @@ app.post('/usuarios/:correo', async (req, res) => {
 
         try {
             // Actualizar el usuario existente con los nuevos datos
-            await db.collection(USUARIOS).updateOne({ correo: correo }, { $set: nuevoRegistro });
+            await auth_db.collection(USUARIOS).updateOne({ correo: correo }, { $set: nuevoRegistro });
             res.status(200).send("Informaci�n de usuario actualizada!");
         } catch (err) {
             console.log(err);
@@ -173,14 +172,14 @@ app.delete('/usuarios/:correo', async (req, res) => {
 
     try {
         // Buscar el usuario por correo electr�nico
-        const usuario = await db.collection(USUARIOS).findOne({ correo: correo });
+        const usuario = await auth_db.collection(USUARIOS).findOne({ correo: correo });
 
         if (!usuario) {
             return res.status(404).send('Usuario no encontrado');
         }
 
         // Si el usuario existe, proceder con la eliminaci�n
-        await db.collection(USUARIOS).deleteOne({ correo: correo });
+        await auth_db.collection(USUARIOS).deleteOne({ correo: correo });
         res.status(200).send("Usuario eliminado correctamente");
     } catch (err) {
         console.log(err);
@@ -188,11 +187,17 @@ app.delete('/usuarios/:correo', async (req, res) => {
     }
 });
 
+// Obtener los equipos registrados                              
+app.get('/equipos', async (req, res) => {
+    let resu = await equipos_db.collection(EQUIPOS).find({}).toArray();
+    console.log("Consultar todos los equipos registrados");
+    res.status(200).json(resu);
+});
 
 // Obtener los equipos de acuerdo a su estado                              
 app.get('/equipos/:estado', async (req, res) => {
     const est = req.params.estado;
-    const equipos = await db.collection(EQUIPOS).find({ estado: est }).toArray();
+    const equipos = await equipos_db.collection(EQUIPOS).find({ estado: est }).toArray();
     console.log(equipos);
     res.status(200).send(equipos);
 });
@@ -205,7 +210,7 @@ app.post('/equipos', async (req, res) => {
     }
     const nuevoRegistro = { ...req.body, estado: 'DISPONIBLE' };
     try {
-        await db.collection(EQUIPOS).insertOne(nuevoRegistro);
+        await equipos_db.collection(EQUIPOS).insertOne(nuevoRegistro);
         res.status(200).send(JSON.stringify({ msg: "Nuevo equipo creado con marbete: " + marbete + "!", status: 200 }));
     } catch (err) {
         console.log(err);
@@ -232,7 +237,7 @@ app.put('/equipos/:id', async (req, res) => {
 
     try {
         // Buscar el equipo por ID
-        const equipo = await db.collection(EQUIPOS).findOne(filtro);
+        const equipo = await equipos_db.collection(EQUIPOS).findOne(filtro);
 
         if (!equipo) {
             return res.status(404).send('Equipo no encontrado');
@@ -245,7 +250,7 @@ app.put('/equipos/:id', async (req, res) => {
 
         // Actualizar la descripci�n del equipo
         const documentoActualizado = { $set: { descripcion: descripcion } };
-        await db.collection(EQUIPOS).updateOne(filtro, documentoActualizado);
+        await equipos_db.collection(EQUIPOS).updateOne(filtro, documentoActualizado);
         res.status(200).send(`Descripci�n del equipo con ID ${equipoID} actualizada correctamente`);
     } catch (err) {
         console.error(err);
@@ -267,19 +272,25 @@ app.post('/solicitudes/:id', async (req, res) => {
         return res.status(500).send('Campos requeridos: [marbete, encargado, estado]');
     }
     const documentoActualizado = { $set: { estado: estado, encargado: encargado } };
-    const result = await db.collection(SOLICITUDES).updateOne(filtro, documentoActualizado, { upsert: false });
+    const result = await equipos_db.collection(SOLICITUDES).updateOne(filtro, documentoActualizado, { upsert: false });
     await actualizarEstadoSolicitud({ marbete: marbete }, estado);
     res.status(200).json(result);
 });
 
 // Obtener solicitudes de un usuario espec�fico o todas                            
 app.get('/solicitudes', async (req, res) => {
-    const { correo, estado } = req.body;
+    const { correo, estado } = req.query;
     if (estado == undefined && correo == undefined) {
-        const resultado = await db.collection(SOLICITUDES).find({}).toArray();
+        const resultado = await equipos_db.collection(SOLICITUDES)
+            .find({})
+            .sort({ _id: -1 })
+            .toArray();
         res.status(200).send(resultado);
     } else if (correo && !estado) {
-        const resultado = await db.collection(SOLICITUDES).find({ correo: correo }).toArray();
+        const resultado = await equipos_db.collection(SOLICITUDES)
+            .find({ correo: correo })
+            .sort({ _id: -1 })
+            .toArray();
         res.status(200).send(resultado);
     } else {
         res.status(500).json({ msg: 'error' });
@@ -299,7 +310,7 @@ app.delete('/equipos/remove/:id', async (req, res) => {
 
     try {
         // Buscar el equipo por ID
-        const equipo = await db.collection(EQUIPOS).findOne(filtro);
+        const equipo = await equipos_db.collection(EQUIPOS).findOne(filtro);
 
         if (!equipo) {
             return res.status(404).send('Equipo no encontrado');
@@ -312,7 +323,7 @@ app.delete('/equipos/remove/:id', async (req, res) => {
         }
 
         // Eliminar el equipo
-        await db.collection(EQUIPOS).deleteOne(filtro);
+        await equipos_db.collection(EQUIPOS).deleteOne(filtro);
         res.status(200).send(`Equipo con ID ${equipoID} eliminado correctamente`);
     } catch (err) {
         console.error(err);
@@ -327,27 +338,27 @@ app.post('/solicitudes', async (req, res) => {
         return res.status(500).send('Campos requeridos.[correo, equipo, marbete]');
     }
     const nuevoRegistro = { ...req.body, estado: 'PENDIENTE', encargado: '' };
-    await db.collection(SOLICITUDES).insertOne(nuevoRegistro);
-    let result = await db.collection(EQUIPOS).updateOne({ marbete: marbete }, { $set: { estado: 'SOLICITADO' } }, { upsert: false });
+    await equipos_db.collection(SOLICITUDES).insertOne(nuevoRegistro);
+    let result = await equipos_db.collection(EQUIPOS).updateOne({ marbete: marbete }, { $set: { estado: 'SOLICITADO' } }, { upsert: false });
     res.status(200).json({ msg: "Ok" });
 });
 async function actualizarEstadoSolicitud(filtro, estado) {
     let result;
     switch (estado.toUpperCase()) {
         case 'PENDIENTE':
-            result = await db.collection(EQUIPOS).updateOne(filtro, { $set: { estado: 'SOLICITADO' } });
+            result = await equipos_db.collection(EQUIPOS).updateOne(filtro, { $set: { estado: 'SOLICITADO' } });
             break;
         case 'APROBADO':
-            result = await db.collection(EQUIPOS).updateOne(filtro, { $set: { estado: 'ENUSO' } });
+            result = await equipos_db.collection(EQUIPOS).updateOne(filtro, { $set: { estado: 'ENUSO' } });
             break;
         case 'NO_APROBADO':
-            result = await db.collection(EQUIPOS).updateOne(filtro, { $set: { estado: 'DISPONIBLE' } });
+            result = await equipos_db.collection(EQUIPOS).updateOne(filtro, { $set: { estado: 'DISPONIBLE' } });
             break;
         case 'RETORNADO':
-            result = await db.collection(EQUIPOS).updateOne(filtro, { $set: { estado: 'DISPONIBLE' } });
+            result = await equipos_db.collection(EQUIPOS).updateOne(filtro, { $set: { estado: 'DISPONIBLE' } });
             break;
         default:
-            result = await db.collection(EQUIPOS).updateOne(filtro, { $set: { estado: 'SOLICITADO' } });
+            result = await equipos_db.collection(EQUIPOS).updateOne(filtro, { $set: { estado: 'SOLICITADO' } });
             break;
     }
     return result;
