@@ -195,31 +195,31 @@ app.get('/equipos', async (req, res) => {
     res.status(200).json(resu);
 });
 
-// Obtener los equipos de acuerdo a su estado                              
+// Obtener los equipos de acuerdo a su disponibilidad                              
 app.get('/equipos/:estado', async (req, res) => {
     const est = req.params.estado;
-    const equipos = await equipos_db.collection(EQUIPOS).find({ estado: est }).toArray();
+    const equipos = await equipos_db.collection(EQUIPOS).find({ disponibilidad: est }).toArray();
     console.log(equipos);
     res.status(200).send(equipos);
 });
 
 // Crear nuevo equipo para prestamos                                
 app.post('/equipos', async (req, res) => {
-    const { marbete, descripcion } = req.body;
-    if (!marbete || !descripcion) {
-        return res.status(500).send('Todos los campos son requeridos.{marbete, descripcion}');
+    const { activo, descripcion } = req.body;
+    if (!activo || !descripcion) {
+        return res.status(500).send('Todos los campos son requeridos.{activo, descripcion}');
     }
-    const nuevoRegistro = { ...req.body, estado: 'DISPONIBLE' };
+    const nuevoRegistro = { ...req.body, disponibilidad: 'DISPONIBLE' };
     try {
         await equipos_db.collection(EQUIPOS).insertOne(nuevoRegistro);
-        res.status(200).send(JSON.stringify({ msg: "Nuevo equipo creado con marbete: " + marbete + "!", status: 200 }));
+        res.status(200).send(JSON.stringify({ msg: "Nuevo equipo creado con activo: " + activo + "!", status: 200 }));
     } catch (err) {
         console.log(err);
         res.status(500).send('Error al crear equipo');
     }
 });
 
-// Modificar la descripci�n de un equipo solo si su estado es DISPONIBLE
+// Modificar la descripci�n de un equipo solo si su disponibilidad es DISPONIBLE
 app.put('/equipos/:id', async (req, res) => {
     const equipoID = req.params.id;
     const { descripcion } = req.body;
@@ -244,8 +244,8 @@ app.put('/equipos/:id', async (req, res) => {
             return res.status(404).send('Equipo no encontrado');
         }
 
-        // Verificar si el estado es DISPONIBLE
-        if (equipo.estado !== 'DISPONIBLE') {
+        // Verificar si la disponibilidad es DISPONIBLE
+        if (equipo.disponibilidad !== 'DISPONIBLE') {
             return res.status(400).send('El equipo no est� disponible para modificar');
         }
 
@@ -261,7 +261,7 @@ app.put('/equipos/:id', async (req, res) => {
 
 // Aprobar, rechazar o establecer solicitudes como pendientes                              
 app.post('/solicitudes/:id', async (req, res) => {
-    const { marbete, estado, encargado } = req.body;
+    const { activo, estado, encargado } = req.body;
     const solicitudID = req.params.id;
     let filtro;
     try {
@@ -269,12 +269,12 @@ app.post('/solicitudes/:id', async (req, res) => {
     } catch {
         return res.status(500).send('Id en formato incorrecto');
     }
-    if (!estado || !marbete || !encargado) {
-        return res.status(500).send('Campos requeridos: [marbete, encargado, estado]');
+    if (!estado || !activo || !encargado) {
+        return res.status(500).send('Campos requeridos: [activo, encargado, estado]');
     }
     const documentoActualizado = { $set: { estado: estado, encargado: encargado } };
     const result = await equipos_db.collection(SOLICITUDES).updateOne(filtro, documentoActualizado, { upsert: false });
-    await actualizarEstadoSolicitud({ marbete: marbete }, estado);
+    await actualizarEstadoSolicitud({ activo: activo }, estado);
     res.status(200).json(result);
 });
 
@@ -298,7 +298,7 @@ app.get('/solicitudes', async (req, res) => {
     }
 });
 
-// Eliminar un equipo solo si su estado es DISPONIBLE
+// Eliminar un equipo solo si su disponibilidad es DISPONIBLE
 app.delete('/equipos/remove/:id', async (req, res) => {
     const equipoID = req.params.id;
     let filtro;
@@ -317,9 +317,9 @@ app.delete('/equipos/remove/:id', async (req, res) => {
             return res.status(404).send('Equipo no encontrado');
         }
 
-        // Verificar si el estado es DISPONIBLE
+        // Verificar si la disponibilidad es DISPONIBLE
         
-        if (equipo.estado !== 'DISPONIBLE') {
+        if (equipo.disponibilidad !== 'DISPONIBLE') {
             return res.status(400).send('El equipo no est� disponible para eliminar');
         }
 
@@ -334,32 +334,32 @@ app.delete('/equipos/remove/:id', async (req, res) => {
 
 // Crear nueva solicitud                                
 app.post('/solicitudes', async (req, res) => {
-    const { correo, equipo, marbete } = req.body;
-    if (!correo || !equipo || !marbete) {
-        return res.status(500).send('Campos requeridos.[correo, equipo, marbete]');
+    const { correo, equipo, activo } = req.body;
+    if (!correo || !equipo || !activo) {
+        return res.status(500).send('Campos requeridos.[correo, equipo, activo]');
     }
     const nuevoRegistro = { ...req.body, estado: 'PENDIENTE', encargado: '' };
     await equipos_db.collection(SOLICITUDES).insertOne(nuevoRegistro);
-    let result = await equipos_db.collection(EQUIPOS).updateOne({ marbete: marbete }, { $set: { estado: 'SOLICITADO' } }, { upsert: false });
+    let result = await equipos_db.collection(EQUIPOS).updateOne({ activo: activo }, { $set: { disponibilidad: 'SOLICITADO' } }, { upsert: false });
     res.status(200).json({ msg: "Ok" });
 });
 async function actualizarEstadoSolicitud(filtro, estado) {
     let result;
     switch (estado.toUpperCase()) {
         case 'PENDIENTE':
-            result = await equipos_db.collection(EQUIPOS).updateOne(filtro, { $set: { estado: 'SOLICITADO' } });
+            result = await equipos_db.collection(EQUIPOS).updateOne(filtro, { $set: { disponibilidad: 'SOLICITADO' } });
             break;
         case 'APROBADO':
-            result = await equipos_db.collection(EQUIPOS).updateOne(filtro, { $set: { estado: 'ENUSO' } });
+            result = await equipos_db.collection(EQUIPOS).updateOne(filtro, { $set: { disponibilidad: 'ENUSO' } });
             break;
         case 'NO_APROBADO':
-            result = await equipos_db.collection(EQUIPOS).updateOne(filtro, { $set: { estado: 'DISPONIBLE' } });
+            result = await equipos_db.collection(EQUIPOS).updateOne(filtro, { $set: { disponibilidad: 'DISPONIBLE' } });
             break;
         case 'RETORNADO':
-            result = await equipos_db.collection(EQUIPOS).updateOne(filtro, { $set: { estado: 'DISPONIBLE' } });
+            result = await equipos_db.collection(EQUIPOS).updateOne(filtro, { $set: { disponibilidad: 'DISPONIBLE' } });
             break;
         default:
-            result = await equipos_db.collection(EQUIPOS).updateOne(filtro, { $set: { estado: 'SOLICITADO' } });
+            result = await equipos_db.collection(EQUIPOS).updateOne(filtro, { $set: { disponibilidad: 'SOLICITADO' } });
             break;
     }
     return result;
