@@ -6,6 +6,7 @@ const cors = require('cors');
 const app = express();
 app.use(cors());
 require('dotenv').config();
+//## Uso de variables de entorno para facilitar la dockerización
 const PORT = process.env.PORT || 4000;
 const MONGO_AUTH_URL = process.env.MONGO_AUTH_URL;
 const MONGO_EQUIPOS_URL = process.env.MONGO_EQUIPOS_URL;
